@@ -19,15 +19,58 @@ const collectBlock = collectBlockPkg.plugin ?? collectBlockPkg
 let reconnectDelay = config.reconnectDelayMs
 let shuttingDown = false
 
+/**
+ * Realms are joined by id/name through the Realms API rather than host:port,
+ * and only with a Microsoft account that owns or was invited to the Realm.
+ */
+const realmsOption = () => {
+  if (config.realmId) return { realmId: config.realmId }
+  if (!config.realmName) return null
+
+  const wanted = config.realmName.toLowerCase()
+  return {
+    pickRealm: (realms) => {
+      const match = realms.find((r) => (r.name ?? '').toLowerCase().includes(wanted))
+      if (!match) {
+        const available = realms.map((r) => `"${r.name}" (id ${r.id})`).join(', ') || 'none'
+        throw new Error(`No Realm matching "${config.realmName}". Available: ${available}`)
+      }
+      log.info('boot', `selected Realm "${match.name}" (id ${match.id})`)
+      return match
+    }
+  }
+}
+
 const createBot = () => {
-  log.info('boot', `connecting to ${config.host}:${config.port} as ${config.username} (auth: ${config.auth})`)
+  const realms = realmsOption()
+
+  if (realms && config.auth !== 'microsoft') {
+    log.error('boot', 'Realms require MC_AUTH=microsoft. Set it in .env and restart.')
+    process.exit(1)
+  }
+
+  if (realms) {
+    log.info('boot', `joining Realm ${config.realmId || `"${config.realmName}"`} as ${config.username}`)
+  } else {
+    log.info('boot', `connecting to ${config.host}:${config.port} as ${config.username} (auth: ${config.auth})`)
+  }
 
   const bot = mineflayer.createBot({
-    host: config.host,
-    port: config.port,
     username: config.username,
     auth: config.auth,
-    ...(config.version ? { version: config.version } : {})
+    profilesFolder: config.profilesFolder,
+    // Printed once on first login; the token is cached afterwards.
+    onMsaCode: (data) => {
+      log.warn('auth', `Sign in at ${data.verification_uri} with code ${data.user_code}`)
+    },
+    ...(realms
+      ? { realms }
+      : {
+          host: config.host,
+          port: config.port,
+          // Realms pick their own version; only pin it for a normal server.
+          ...(config.version ? { version: config.version } : {})
+        })
   })
 
   bot.loadPlugin(pathfinder)

@@ -5,3 +5,6 @@ npm-debug.log*
 
 # flying-squid writes this when worldFolder is null
 null
+
+# cached Microsoft login tokens
+.minecraft-auth/

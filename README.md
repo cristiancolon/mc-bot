@@ -22,33 +22,66 @@ Then in-game, type `status` in chat and the bot will answer.
 
 ## Getting it into your world
 
-A single-player world isn't reachable over the network, so the bot needs a server to join.
+The bot joins over the network like any other player, so it needs somewhere to connect to.
+**Every option except offline-mode requires the bot to have its own paid Minecraft account** —
+it cannot share yours, or you'd be kicked.
 
-### Option A — Open to LAN (fastest, needs a second account)
+### Option A — A Minecraft Realm
 
-1. Pause your game → **Open to LAN** → note the port it prints.
-2. Set `MC_PORT` to that port and `MC_AUTH=microsoft`.
-3. `npm start`, then complete the device-code login once.
+Supported directly. Invite the bot's account to the Realm, then:
 
-LAN worlds always run in online mode, so the bot needs its own separately-paid Microsoft
-account. It cannot share yours — you'd be kicked.
+```bash
+# .env
+MC_AUTH=microsoft
+MC_USERNAME=bot-account@example.com   # the EMAIL, not the gamertag
+MC_REALM_ID=                          # find it with: npm run realms
+```
 
-### Option B — Local dedicated server (recommended)
+```bash
+npm run realms   # lists Realms the account can join, with their ids
+npm start        # first run prints a device code to sign in with, once
+```
 
-1. Copy your world folder into a Paper or vanilla server directory.
-2. In `server.properties`, set `online-mode=false`.
-3. Leave `MC_AUTH=offline`. Both you and the bot connect to `localhost:25565`.
+`MC_REALM_NAME` works too if you'd rather match on name than id. Host and port are ignored.
 
-No second account needed, and the bot can stay logged in keeping chunks ticking while
-you're offline.
+Two Realm-specific catches:
 
-> **Only do this on a machine that isn't exposed to the internet.** `online-mode=false`
-> means anyone who can reach the port can log in as any username, including yours.
+- **Realms always run the newest Minecraft version and you can't pin it.** If the Realm
+  updates past mineflayer's ceiling, the bot simply can't join, and there's no fix on your
+  end — Realms don't accept plugins, so ViaVersion isn't an option. This is the single
+  biggest reason to prefer a server.
+- **The bot occupies one of your 10 player slots.**
 
-> **Heads up:** modern Minecraft servers need **Java 21+**. Check yours with `java -version`,
-> and install a newer JDK if needed (`brew install openjdk@21` on macOS) before Option B works.
+### Option B — A server you and your friends share (recommended)
 
----
+Any Paper/Fabric/vanilla server, self-hosted or rented. This is the better choice because
+you control the version, and you can skip buying a second account.
+
+*If the server is online-mode (normal):* the bot needs its own paid account. Set
+`MC_AUTH=microsoft` and `MC_USERNAME` to that account's email, plus `MC_HOST`/`MC_PORT`.
+
+*If you run the server yourself:* set `online-mode=false` and leave `MC_AUTH=offline`, and
+no second account is needed.
+
+> **Turn on the whitelist if you do this.** `online-mode=false` on an internet-reachable
+> server means anyone who finds it can log in as any username, including yours, with your
+> permissions. On a LAN-only or localhost server the risk is minimal; on a public address
+> it is not.
+
+Hosting it yourself needs **Java 21+** (`java -version` to check; `brew install openjdk@21`
+on macOS). A cheap rented host works too and avoids leaving your machine on.
+
+### Option C — Open to LAN (quick test, one session)
+
+Pause → **Open to LAN** → note the port → set `MC_PORT` and `MC_AUTH=microsoft`. LAN worlds
+are always online-mode, so the second account is required. Fine for trying things out, but
+the port changes every time you reopen the world.
+
+### Not an option — Aternos and similar free hosts
+
+Aternos supports offline mode, but **prohibits bots being used to keep a server online**
+and enforces it with shutdowns and account suspension. A survival bot that stays connected
+is exactly the pattern they ban.
 
 ## Version compatibility
 
@@ -61,10 +94,14 @@ Re-check at any time:
 node -e "console.log(require('minecraft-protocol').supportedVersions.join(', '))"
 ```
 
-If your client is newer than the highest supported version, either run the server at a
-supported version, or run Paper with **ViaVersion/ViaBackwards** so the bot can join on an
-older protocol while you play on the current client. Pin the bot's protocol with
+If your server is newer than the highest supported version, either run it at a supported
+version, or run Paper with **ViaVersion/ViaBackwards** so the bot can join on an older
+protocol while you and your friends play on the current client. Pin the bot's protocol with
 `MC_VERSION=` when auto-detection guesses wrong.
+
+Neither workaround is available on a Realm, since you control neither its version nor its
+plugins — so a Realm that has updated past the ceiling simply can't host the bot until
+mineflayer catches up.
 
 ---
 
@@ -194,6 +231,8 @@ src/
   commands.js     chat commands
   behaviors/      flee, fight, eat, forage, idle
   lib/            mob classification, food choice, retreat scoring, nav helpers
+scripts/
+  realms.mjs      list Realms the bot account can join
 test/
   brain.test.js   arbitration unit tests
   integration.mjs live server end-to-end

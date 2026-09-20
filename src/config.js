@@ -15,6 +15,15 @@ export const config = {
   // Player the bot obeys and follows. Empty = obey anyone.
   owner: process.env.MC_OWNER || '',
 
+  // ---- Realms ----
+  // Set either of these to join a Minecraft Realm instead of host/port.
+  // Realms require auth: 'microsoft'; host, port and version are ignored.
+  realmId: process.env.MC_REALM_ID || '',
+  realmName: process.env.MC_REALM_NAME || '',
+  // Where the Microsoft login token is cached, so the device-code flow only
+  // has to be completed once.
+  profilesFolder: process.env.MC_PROFILES_FOLDER || './.minecraft-auth',
+
   // ---- brain ----
   tickMs: num(process.env.TICK_MS, 200),
   // A state must run this long before a lower-priority state may replace it.
