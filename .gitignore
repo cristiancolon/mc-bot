@@ -1,0 +1,7 @@
+node_modules/
+.env
+npm-debug.log*
+*.log
+
+# flying-squid writes this when worldFolder is null
+null

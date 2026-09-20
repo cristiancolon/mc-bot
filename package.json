@@ -1,0 +1,33 @@
+{
+  "name": "mc-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Minecraft Java survival bot that joins as a second player, keeps itself alive, and feeds itself.",
+  "main": "src/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "viewer": "VIEWER=1 node src/index.js",
+    "test": "node --test 'test/*.test.js'",
+    "test:integration": "node test/integration.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^18.0.1",
+    "minecraft-data": "^3.116.0",
+    "mineflayer": "^4.39.0",
+    "mineflayer-armor-manager": "^2.0.1",
+    "mineflayer-auto-eat": "^5.0.3",
+    "mineflayer-collectblock": "^1.6.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-pvp": "^1.3.2",
+    "vec3": "^0.2.0"
+  },
+  "devDependencies": {
+    "flying-squid": "^1.12.0"
+  }
+}
