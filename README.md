@@ -236,7 +236,13 @@ scripts/
 test/
   brain.test.js   arbitration unit tests
   integration.mjs live server end-to-end
+docs/
+  HANDOFF.md      project state, decisions and open questions
 ```
+
+Picking this up fresh, or handing it to someone else? Start with
+[`docs/HANDOFF.md`](docs/HANDOFF.md) — it covers what's tested, which design choices are
+load-bearing, and what's still undecided.
 
 ---
 
