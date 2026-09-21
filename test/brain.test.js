@@ -88,6 +88,40 @@ test('hysteresis: commits to a fight already in progress, but will not start one
   assert.equal(decide(makeBot({ health, entities: [mob('zombie', 4)] }), { current: 'idle' }), 'flee')
 })
 
+test('hysteresis: a pack in the dead zone does not flip a fleeing bot back to fight', () => {
+  // Found on a real server, not here: with a bare `> maxEngageTargets` check,
+  // one zombie stepping in and out of detectRange produced
+  // flee -> fight -> flee -> fight, and the bot neither escaped nor committed.
+  // Same pack size, different answer depending on what we are already doing.
+  const entities = Array.from({ length: config.maxEngageTargets }, (_, i) => mob('zombie', 4 + i))
+  assert.ok(entities.length > config.reengageTargets, 'fixture must sit inside the band')
+  assert.ok(entities.length <= config.maxEngageTargets)
+
+  assert.equal(decide(makeBot({ entities }), { current: 'idle' }), 'fight')
+  assert.equal(decide(makeBot({ entities }), { current: 'flee' }), 'flee')
+})
+
+test('hysteresis: a pack loitering outside safeRadius does not churn flee <-> idle', () => {
+  // The exact shape that killed the bot on a real server. detectRange (16) and
+  // safeRadius (14) left a ring where a mob was simultaneously a threat -- so
+  // `flee` re-triggered -- and "clear" -- so clearTicks let `flee` exit. The
+  // result was flee -> idle -> flee -> idle until a Drowned finished it off.
+  const ring = (config.safeRadius + config.detectRange) / 2
+  assert.ok(ring > config.alarmRadius, 'fixture must sit outside the alarm radius')
+  assert.ok(ring <= config.detectRange, 'fixture must still be a detected threat')
+  const entities = [mob('zombie', ring), mob('zombie', ring + 0.2), mob('zombie', ring + 0.4)]
+
+  // Calm: a pack that far away is not worth reacting to.
+  assert.equal(decide(makeBot({ entities }), { current: 'idle' }), 'idle')
+  // Already fleeing from it: keep going, do not drop back to idle.
+  assert.equal(decide(makeBot({ entities }), { current: 'flee' }), 'flee')
+})
+
+test('re-engages once a pack thins to reengageTargets', () => {
+  const entities = Array.from({ length: config.reengageTargets }, (_, i) => mob('zombie', 4 + i))
+  assert.equal(decide(makeBot({ entities }), { current: 'flee' }), 'fight')
+})
+
 test('flees at critical health even against one weak mob', () => {
   const bot = makeBot({ health: config.criticalHealth - 1, entities: [mob('zombie', 4)] })
   assert.equal(decide(bot), 'flee')

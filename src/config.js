@@ -33,6 +33,13 @@ export const config = {
   // ---- threat detection ----
   detectRange: num(process.env.DETECT_RANGE, 16), // scan radius for hostiles
   safeRadius: num(process.env.SAFE_RADIUS, 14), // must be clear of threats to stop fleeing
+  // The hysteresis band on distance. A calm bot only reacts to something inside
+  // alarmRadius; once reacting, it keeps going until threats clear safeRadius.
+  // alarmRadius < safeRadius is load-bearing: when entry and exit shared a
+  // radius, a mob sitting between safeRadius and detectRange counted as BOTH a
+  // threat (re-triggering flee) and as clear (permitting the exit to idle), and
+  // the bot churned flee -> idle -> flee until something killed it.
+  alarmRadius: num(process.env.ALARM_RADIUS, 10),
   engageRange: num(process.env.ENGAGE_RANGE, 10), // start a fight inside this
   fleeClearTicks: num(process.env.FLEE_CLEAR_TICKS, 6), // consecutive calm ticks before leaving flee
 
@@ -45,6 +52,11 @@ export const config = {
 
   // A single mob is manageable; a pack is not. Above this, retreat.
   maxEngageTargets: num(process.env.MAX_ENGAGE_TARGETS, 2),
+  // The hysteresis band again, this time on pack size. Once fleeing, the count
+  // must fall to this -- below maxEngageTargets -- before the bot turns and
+  // fights. Without the gap, one mob drifting across detectRange flips the
+  // decision on every crossing, and the bot neither escapes nor commits.
+  reengageTargets: num(process.env.REENGAGE_TARGETS, 1),
   // Creepers are a losing melee trade without careful timing. Off = keep away.
   engageCreepers: bool(process.env.ENGAGE_CREEPERS, false),
   creeperSafeDistance: num(process.env.CREEPER_SAFE_DISTANCE, 6),

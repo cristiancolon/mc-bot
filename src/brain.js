@@ -101,8 +101,15 @@ export class Brain {
     const inFlee = this.current?.name === 'flee'
     const threatened = snapshot.threats.length > 0
 
+    // Distance hysteresis. A calm bot needs something inside alarmRadius before
+    // it reacts at all; a bot already fighting or fleeing reacts to anything in
+    // detectRange, and stops only once clear of safeRadius. Entry radius <
+    // exit radius, so a mob loitering in between cannot flip the decision.
+    const defending = inFight || inFlee
+    const alarmed = (snapshot.nearest?.distance ?? Infinity) <= config.alarmRadius
+
     // --- survival ---
-    if (threatened) {
+    if (threatened && (defending || alarmed)) {
       // Checked before the critical-health bail-out on purpose: if findRetreat
       // came back empty there is nowhere to run, and fleeing would mean standing
       // still while being hit. Fighting back is strictly better than a deadlock.
@@ -110,8 +117,15 @@ export class Brain {
 
       if (health <= config.criticalHealth) return 'flee'
 
+      // Pack size gets a hysteresis band too. We will start a fight at up to
+      // maxEngageTargets, but once fleeing the pack has to thin out to
+      // reengageTargets before turning around. Observed live: with a bare
+      // threshold, a zombie stepping in and out of detectRange produced
+      // flee -> fight -> flee -> fight, and the bot did neither well.
+      const engageLimit = inFlee ? config.reengageTargets : config.maxEngageTargets
+
       const outmatched =
-        snapshot.threats.length > config.maxEngageTargets ||
+        snapshot.threats.length > engageLimit ||
         (snapshot.creeperClose && !config.engageCreepers)
 
       // The hysteresis band. Committing to a fight at 12 HP but only bailing at
