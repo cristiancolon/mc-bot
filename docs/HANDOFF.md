@@ -22,23 +22,31 @@ Built on [Mineflayer](https://github.com/PrismarineJS/mineflayer). Repo:
 The bot runs. It connects, spawns, responds to chat commands, and transitions correctly
 between survival states. Nothing is half-finished.
 
-- **17 unit tests** (`npm test`) — arbitration logic against a mock bot, no server needed
+- **19 unit tests** (`npm test`) — arbitration logic against a mock bot, no server needed
 - **5 integration checks** (`npm run test:integration`) — boots a real server and verifies
   state transitions over a live protocol connection
 
 Both suites passed at time of writing. Run them before and after any change.
 
-### The one important gap
+### Verified against a real server on 2026-09-20
 
-**The bot has never connected to a real Minecraft server.** All live testing used
-[flying-squid](https://github.com/PrismarineJS/flying-squid), a Minecraft server written in
-JavaScript, because the owner's machine has **Java 14** and a real server needs **Java 21+**.
+The old handoff's "the bot has never connected to a real Minecraft server" gap is
+**closed**. A local Paper **26.1.2** server was stood up at `~/code/mc-server` and the bot
+connected, played, and survived against it. Confirmed live:
 
-flying-squid speaks the real 1.21.4 protocol, so this is meaningful verification — but it is
-not a vanilla/Paper server. Expect small surprises on first contact with the real thing.
+| | |
+|---|---|
+| Connect + spawn | `spawned as Survivor on 26.1` — version auto-detect resolved `26.1.2` unaided |
+| Auto-reconnect | recovered by itself after a server restart, on the 60s backoff |
+| `fight` | single zombie engaged and killed in 11s (earned *Monster Hunter*) |
+| `flee` (creeper) | fled at **full health 20** — `ENGAGE_CREEPERS=false` honoured |
+| `flee` (pack) | `fight -> flee` when a third zombie arrived |
+| Server load | TPS 20.0 / 20.0 / 20.0, flat |
 
-The **Realms path is code-verified but never executed live** — it needs a real Realm and a
-second paid Minecraft account, neither of which we had.
+`eat` and `forage` are still only exercised by unit tests and flying-squid.
+
+The **Realms path is still code-verified but never executed live** — it needs a real Realm
+and a second paid Minecraft account, neither of which we had.
 
 ---
 
@@ -72,6 +80,30 @@ because the naive version misbehaves:
    how bots path into lava. `src/lib/safety.js` samples a ring of candidates, rejects any
    that aren't safe to stand in, and scores survivors on distance gained.
 
+5. **Hysteresis band on pack size.** Start a fight at up to `MAX_ENGAGE_TARGETS` (2), but
+   once fleeing, the pack must thin to `REENGAGE_TARGETS` (1) before turning around.
+   *Added 2026-09-20 after live testing* — with a bare `> maxEngageTargets` check, one
+   zombie stepping in and out of `DETECT_RANGE` produced `flee -> fight -> flee -> fight`
+   and the bot neither escaped nor committed.
+
+6. **Hysteresis band on distance.** A calm bot only reacts to a threat inside
+   `ALARM_RADIUS` (10); once fighting or fleeing it reacts to anything in `DETECT_RANGE`
+   (16) and stops only once clear of `SAFE_RADIUS` (14). *Added 2026-09-20, immediately
+   after rule 5 exposed it.* With entry and exit sharing a radius, a mob between
+   `safeRadius` and `detectRange` was **simultaneously a threat** (so `flee` re-triggered)
+   **and "clear"** (so `clearTicks` let `flee` exit) — producing
+   `flee -> idle -> flee -> idle`, during which the bot died. `FLEE_CLEAR_TICKS` is a
+   *temporal* band and does not cover this.
+
+   The pattern across rules 1, 5 and 6 is the same: **every threshold that gates entry into
+   a defensive state needs a different value than the one that gates leaving it.** Health
+   had a band from the start; pack size and distance did not, and both produced a fatal
+   oscillation. If you add a new threshold, give it a band.
+
+   Note the unit tests are static scenarios and caught none of this. All three were found
+   by watching a real server. There are now tests for each, but they were written *after*
+   the live observation, not before.
+
 ### Load-bearing detail that looks like a bug
 
 In `Brain.decide()`, the `cornered` check comes **before** the `criticalHealth` check. This
@@ -99,6 +131,19 @@ If you reorder these, `cornered bot fights rather than running nowhere` will fai
 ---
 
 ## Traps that will cost you an hour
+
+**Minecraft 26.1+ needs Java 25, not 21.** The server refuses to boot on anything older:
+`Minecraft 26.1 and newer requires running the server with Java 25 or above`. The previous
+handoff's "needs 21+ (`brew install openjdk@21`)" was correct for 1.20.5 and is now wrong.
+The Java 21.0.4 sitting on the Windows side is *not* sufficient either — an easy false start.
+
+**Mineflayer's 26.1 ceiling is now behind current Paper (26.3).** ViaVersion/ViaBackwards
+has stopped being a hypothetical: a shared server running the current version *cannot*
+accept this bot without it. Either run Via, or pin the server to 26.1.
+
+**The `physicTick` deprecation warning on startup is not ours.** It comes from
+`mineflayer-pvp/lib/PVP.js`, which still listens on the pre-rename event. Nothing in `src/`
+references it; don't go looking.
 
 **This project is ESM (`"type": "module"`) and must stay that way.**
 `mineflayer-auto-eat@5` is **ESM-only**. But `mineflayer-pathfinder`, `mineflayer-pvp` and
@@ -132,12 +177,16 @@ pvp's swing timing and the bot stops actually hitting. `src/behaviors/fight.js` 
 
 | | |
 |---|---|
-| Node | v24.16.0 |
-| npm | 11.13.0 |
-| Java | **14.0.2 — too old.** Needs 21+ (`brew install openjdk@21`) |
-| Platform | macOS (darwin 25.3.0) |
+| Node | v24.14.0 |
+| Java | Temurin **25.0.4.1** at `~/.local/jdk/jdk-25.0.4.1+1` (no sudo needed) |
+| Platform | **WSL2 (Ubuntu) on the gaming PC** — Linux 6.18, not macOS |
+| WSL limits | 10 GB RAM / 8 processors, set in `.wslconfig` |
 | `gh` | authenticated as `cristiancolon` |
 | Mineflayer protocol ceiling | **26.1** (verified from the installed package) |
+| Latest Paper | **26.3** — i.e. the ceiling is now *behind* current |
+
+Note this is a different machine than the previous handoff described. The macOS/Java 14
+entry is gone; work now happens in WSL2 on the 7800X3D box.
 
 Re-check the ceiling any time:
 
@@ -161,13 +210,58 @@ Agreed configuration:
   pauses, which show up as lag spikes.
 - Bot process measured at **~150 MB**, so it can run anywhere — same PC or the Mac over LAN.
 
-**Ruled out:**
-- **Aternos and similar free hosts.** They support offline mode but explicitly prohibit bots
-  used to keep a server online, enforced with shutdowns and account suspension. A survival
-  bot that stays connected is exactly the banned pattern.
-- **A VPS**, for now. Worse single-thread performance than the 7800X3D. Only revisit if the
-  owner wants uptime while the PC is off — that's an uptime purchase, not a performance one.
-  (Note: leaving the gaming PC on 24/7 likely costs more in electricity than a cheap VPS.)
+**Ruled out — free hosts, confirmed against the actual ToS (2026-09-20):**
+
+Aternos §5.2 bans this by name: §5.2 c) prohibits *"Circumventing or prolonging the stop
+routine which stops servers without active players especially by … using fake players, e.g.
+bots"*; §5.2 a) bans *"Modifying or overwriting the amount of active players"*; §5.2 b) bans
+*"faking player activity"* and repeated auto-reconnection — which `RECONNECT=true` does
+verbatim. Penalty is deletion of the account and all servers. The "but mine actually plays,
+it isn't an AFK bot" argument has **never been officially ruled on by anyone**, and §5.2 c)
+carries no idleness qualifier.
+
+Minehut and Falix ban it too; Falix gates its keep-alive behind a CAPTCHA specifically so
+bots can't satisfy it, and Minehut authenticates at its proxy so the bot would need a paid
+account anyway. This is structural, not incidental: free hosting is only viable *because*
+empty servers get stopped, and a persistently-connected bot is precisely what they sell.
+
+Galling detail: everything else about Aternos fit — version pinning works, ViaVersion is in
+their addon library, and their "Cracked" toggle gives `online-mode=false`. The bot is the
+single disqualifier.
+
+**Hosting, reconsidered (the previous handoff's VPS reasoning was partly wrong):**
+
+The old entry said a VPS has "worse single-thread performance than the 7800X3D" and implied
+ARM would be weak. Measured Geekbench 6 single-core says the ARM claim was backwards:
+
+| Instance | GB6 single-core |
+|---|---|
+| Oracle A1 (free tier) | **1092** |
+| Hetzner CAX11 (ARM) | 988 |
+| Hetzner CX22 (Intel shared) | 865 |
+
+~1000 is roughly the floor for "a few players on optimized Paper", so Oracle's free tier
+sits right at the threshold for 4-5 players — adequate, no headroom. The 7800X3D is still
+far better; that part stands.
+
+**The deciding factor is shell access, not price.** With a shell, the bot (~150 MB) runs
+next to the server and Velocity can proxy in online mode to a localhost-bound backend — so
+the bot needs **no paid account**. A managed Minecraft host gives a container, not a shell,
+so the bot must authenticate from outside: budget ~$30 once for an account, or run an auth
+plugin. That swamps the $1/mo difference between plans.
+
+Current recommendation: **Oracle Cloud A1 free** (2 OCPU / 12 GB) if capacity is available,
+falling back to **RackNerd 4 GB (~$60/yr)**. Measure 4k disk IOPS on Oracle before
+committing — one benchmark showed 10 MB/s, 10-14x slower than Hetzner, which would hurt
+chunk I/O. Pregenerating with Chunky is **non-optional** on a 2-vCPU box: Paper's
+`chunk-system.worker-threads` defaults to half the core count, so 2 cores gets one worker.
+
+**Exposing a home server is the strongest argument against self-hosting.** Port 25565 is
+scanned continuously and indexed publicly; a home IP ends up on a known-server list within
+days. The likely cost is DDoS taking out the whole household's connection; the unlikely but
+severe one is that a compromised server sits inside the LAN, next to everything else. A VPS
+compromise costs a rebuild. If self-hosting anyway, use a **playit.gg** reverse tunnel —
+outbound only, no port forwarding, home IP never exposed.
 
 **Realms:** supported in code (`MC_REALM_ID` / `MC_REALM_NAME`, `npm run realms` lists ids),
 but a Realm always runs the newest version, can't be pinned, and accepts no plugins — so once
@@ -184,25 +278,47 @@ But offline mode plus a whitelist is **not** safe on an internet-reachable serve
 are unverified in offline mode and the whitelist matches on username, so anyone who learns a
 whitelisted name can join as them — including the owner, with their permissions.
 
-Three viable paths:
+Four viable paths:
 
 1. **Buy the bot an account** (~$30 once), run `online-mode=true`. Simplest and properly
    secure.
 2. **Velocity proxy in online mode + backend in offline mode bound to localhost.** Friends
    authenticate at the proxy; the bot connects directly to the backend and skips auth. Free
    and secure, but real setup work.
-3. **Keep it LAN-only** and accept that friends can't join remotely.
+3. **`online-mode=false` plus an auth plugin (AuthMe-style).** Friends register a password
+   and `/login` each session, which closes the unverified-username hole. Free. Costs a login
+   prompt, and breaks skins unless SkinsRestorer is added. *Unverified: nobody has confirmed
+   AuthMe supports 26.1 — check before relying on it.*
+4. **Keep it LAN-only** and accept that friends can't join remotely.
+
+**This choice is coupled to the hosting choice.** Path 2 needs the bot to reach a
+localhost-bound backend, which means the bot process must run on the server box — i.e. a
+VPS with a shell. On a managed Minecraft host you get a container, not a shell, so path 2 is
+off the table and it's effectively path 1 or 3.
+
+---
+
+## Still open: retreat scoring may treat water as safe
+
+During the bug hunt below, one `flee` picked a retreat containing a Drowned, which killed
+the bot. Worth checking whether `src/lib/safety.js` scores water as safe to stand in — it
+rejects lava, fire, cactus, magma and powder snow, but water is survivable-but-dangerous
+rather than outright lethal, so it may be passing the filter.
+
+Not yet investigated.
 
 ---
 
 ## Suggested next steps
 
-1. `brew install openjdk@21` — nothing involving a real server works until this is done.
-2. Stand up Paper on the gaming PC, run the bot against it, and confirm behaviour matches
-   what flying-squid showed. **This is the highest-value next action**, since it closes the
-   one real gap in testing.
+1. **Check whether `safety.js` scores water as safe** (see the open item above) — a retreat
+   into water with a Drowned in it killed the bot once.
+2. Exercise `eat` and `forage` against the real server — they are still only covered by unit
+   tests and flying-squid. Use `~/code/mc-server/mc-cmd.sh` to drive conditions
+   (`effect give Survivor minecraft:hunger`, `time set night`, `kill @e[type=zombie]`).
 3. Pick an auth path from the section above before opening it to friends.
-4. Only then consider new behaviours.
+4. Pick a host. Oracle A1 free first, RackNerd as fallback — see the hosting notes above.
+5. Only then consider new behaviours.
 
 ### Natural extensions
 
@@ -234,3 +350,21 @@ docs/
 
 Read `src/brain.js` and `test/brain.test.js` together. The tests are the clearest statement
 of what the arbitration is supposed to do.
+
+### The local test server (outside this repo)
+
+`~/code/mc-server/` — deliberately not in the repo, so it never gets committed.
+
+```
+paper.jar       Paper 26.1.2 build 74
+start.sh        launches it with Temurin 25 + Aikar's flags, creates the console pipe
+mc-cmd.sh       send a console command:  ./mc-cmd.sh time set night
+console.in      FIFO feeding the server's stdin (a holder process keeps it open)
+README.md       why 26.1.2, why Java 25, and the loopback/bind tradeoff
+```
+
+Start it, then `npm start` in this repo. `.env` already points at `localhost:25565`.
+
+`server-ip=0.0.0.0` so the Windows Minecraft client can reach it through WSL2's localhost
+forwarding; WSL's NAT keeps it off the LAN. **Do not add a `netsh portproxy` for 25565
+while `online-mode=false`** — that exposes an unauthenticated server to the whole network.
