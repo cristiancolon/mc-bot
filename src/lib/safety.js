@@ -18,17 +18,48 @@ export const DANGER_BLOCKS = new Set([
   'nether_portal'
 ])
 
+/**
+ * Water is deliberately NOT in DANGER_BLOCKS. It does no contact damage, and
+ * DANGER_BLOCKS also feeds `movements.blocksToAvoid`, so listing it there would
+ * stop the pathfinder crossing any water at all.
+ *
+ * It is still a bad place to *stop*: head-deep water drowns the bot (nothing
+ * tracks its breath), swimming is slower than the mobs chasing it, and Drowned
+ * live there. `movements.js` already prices this into the path via
+ * `liquidCost`, but `findRetreat` picks the destination and had no such rule --
+ * so a retreat into water with a Drowned in it killed the bot on a real server.
+ */
+export const WATER_BLOCKS = new Set([
+  'water',
+  'bubble_column',
+  'kelp',
+  'kelp_plant',
+  'seagrass',
+  'tall_seagrass'
+])
+
 const isPassable = (block) => !block || block.boundingBox === 'empty'
 const isSolid = (block) => block && block.boundingBox === 'block'
 
-/** True if the bot can stand at `pos` without taking damage. */
+// Note `water` has boundingBox 'empty', so it passes isPassable -- which is
+// exactly how it slipped through before. Waterlogged blocks (ladders, signs,
+// rails) report their own name rather than 'water', hence the property check.
+// Air is by far the most common block here, so it short-circuits first: this
+// runs for every candidate position on every flee tick.
+const isWater = (block) => {
+  if (!block || block.name === 'air') return false
+  if (WATER_BLOCKS.has(block.name)) return true
+  return block.getProperties?.().waterlogged === true
+}
+
+/** True if the bot can stand at `pos` without taking damage or drowning. */
 export const isStandable = (bot, pos) => {
   const ground = bot.blockAt(pos.offset(0, -1, 0))
   const feet = bot.blockAt(pos)
   const head = bot.blockAt(pos.offset(0, 1, 0))
   if (!isSolid(ground) || DANGER_BLOCKS.has(ground.name)) return false
-  if (!isPassable(feet) || DANGER_BLOCKS.has(feet?.name)) return false
-  if (!isPassable(head) || DANGER_BLOCKS.has(head?.name)) return false
+  if (!isPassable(feet) || DANGER_BLOCKS.has(feet?.name) || isWater(feet)) return false
+  if (!isPassable(head) || DANGER_BLOCKS.has(head?.name) || isWater(head)) return false
   return true
 }
 
